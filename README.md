@@ -1,6 +1,18 @@
-# ⚡ Zip
+<p align="center">
+  <a href="https://zip-game.vercel.app/?seed=medium-1337">
+    <img alt="zip game preview" src="./.github/preview.png" />
+  </a>
+</p>
+<h1 align="center">
+  ⚡ ZIP ⚡
+</h1>
+<h3 align="center">
+  A path-drawing puzzle game where every cell matters.
+</h3>
 
-**A path-drawing puzzle game where every cell matters.**
+
+
+# About
 
 Inspired by the [LinkedIn Zip game](https://www.linkedin.com/games/zip/) — built entirely using [Claude Opus 4.6](https://www.anthropic.com/claude) as the AI coding assistant. Zero game libraries. Zero animation frameworks. Just Next.js, Canvas, and a lot of math.
 
