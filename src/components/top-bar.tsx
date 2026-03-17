@@ -8,8 +8,8 @@ interface TopBarProps {
   moves: number;
   difficulty: string;
   seed: string;
-  onReset: () => void;
-  onNewPuzzle: () => void;
+  onShareChallenge: () => void;
+  shareTooltip: string | null;
 }
 
 function formatTime(seconds: number): string {
@@ -23,8 +23,8 @@ export default function TopBar({
   moves,
   difficulty,
   seed,
-  onReset,
-  onNewPuzzle,
+  onShareChallenge,
+  shareTooltip,
 }: TopBarProps) {
   const config =
     DIFFICULTY_CONFIG[difficulty as keyof typeof DIFFICULTY_CONFIG];
@@ -62,11 +62,11 @@ export default function TopBar({
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="relative">
           <button
-            onClick={onReset}
+            onClick={onShareChallenge}
             className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
-            title="Reset puzzle"
+            title="Copy challenge link"
           >
             <svg
               className="w-4 h-4"
@@ -75,27 +75,15 @@ export default function TopBar({
               stroke="currentColor"
               strokeWidth={2}
             >
-              <path d="M4 4v5h5" />
-              <path d="M20 20v-5h-5" />
-              <path d="M4 9a9 9 0 0 1 15.28-4.28L20 4" />
-              <path d="M20 15a9 9 0 0 1-15.28 4.28L4 20" />
+              <path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
             </svg>
           </button>
-          <button
-            onClick={onNewPuzzle}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
-            title="New puzzle"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </button>
+          {shareTooltip && (
+            <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-3 py-1.5 rounded-lg whitespace-nowrap shadow-lg">
+              {shareTooltip}
+              <div className="absolute left-1/2 -translate-x-1/2 bottom-full w-2 h-2 bg-gray-900 rotate-45 mb-[-4px]" />
+            </div>
+          )}
         </div>
       </div>
     </div>

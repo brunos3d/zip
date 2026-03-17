@@ -38,21 +38,20 @@ export default function ZipGame() {
         moves={gameState?.moves ?? 0}
         difficulty={difficulty}
         seed={gameState?.seed ?? ""}
-        onReset={handleReset}
-        onNewPuzzle={handleNewPuzzle}
+        onShareChallenge={handleShareChallenge}
+        shareTooltip={shareTooltip}
       />
 
       <Controls
         difficulty={difficulty}
         onDifficultyChange={handleDifficultyChange}
         onHint={handleHint}
-        onShare={handleShare}
+        onReset={handleReset}
+        onNewPuzzle={handleNewPuzzle}
         onRevealSolution={handleRevealSolution}
-        onShareChallenge={handleShareChallenge}
         hintsRemaining={gameState?.hintsRemaining ?? 0}
         solved={gameState?.solved ?? false}
         revealingSolution={gameState?.revealingSolution ?? false}
-        shareTooltip={shareTooltip}
       />
 
       {/* Progress indicator */}
