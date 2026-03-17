@@ -1,310 +1,35 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useRef } from "react";
-import { Difficulty, Point, parseSeed } from "@/engine/types";
-import {
-  generatePuzzle,
-  getDailyPuzzle,
-  getRandomPuzzle,
-} from "@/engine/puzzle-generator";
-import {
-  createGameState,
-  handleCellEnter,
-  handleDragStart,
-  resetGame,
-  requestHint,
-  revealSolution,
-  generateShareText,
-  generateChallengeUrl,
-  GameState,
-} from "@/state/game-store";
+import React from "react";
+import { useGame } from "@/state/game-context";
 import GameCanvas from "@/components/game-canvas";
 import TopBar from "@/components/top-bar";
 import Controls from "@/components/controls";
 import PuzzleLoading from "@/components/puzzle-loading";
 
-function getInitialDifficulty(): Difficulty {
-  if (typeof window === "undefined") return "easy";
-  const params = new URLSearchParams(window.location.search);
-  const seedParam = params.get("seed");
-  if (!seedParam) return "easy";
-  try {
-    return parseSeed(seedParam).difficulty;
-  } catch {
-    return "easy";
-  }
-}
-
 export default function ZipGame() {
-  const [difficulty, setDifficulty] =
-    useState<Difficulty>(getInitialDifficulty);
-  const [gameState, setGameState] = useState<GameState | null>(null);
-  const [checkpointReached, setCheckpointReached] = useState<Point | null>(
-    null,
-  );
-  const [puzzleSolvedAnim, setPuzzleSolvedAnim] = useState(false);
-  const [hintCell, setHintCell] = useState<Point | null>(null);
-  const [remainingCellsPing, setRemainingCellsPing] = useState<Point[] | null>(
-    null,
-  );
-  const [shareTooltip, setShareTooltip] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(true);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const canvasWrapperRef = useRef<HTMLDivElement>(null);
-  const [canvasVisible, setCanvasVisible] = useState(false);
-
-  // Detect when the GameCanvas wrapper is fully visible
-  useEffect(() => {
-    const el = canvasWrapperRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => setCanvasVisible(entry.isIntersecting),
-      { threshold: 1.0 },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  // Generate initial puzzle on mount (deferred so loading animation paints first)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const params = new URLSearchParams(window.location.search);
-      const seedParam = params.get("seed");
-      let puzzle;
-      let diff = difficulty;
-      if (seedParam) {
-        try {
-          const parsed = parseSeed(seedParam);
-          diff = parsed.difficulty;
-          puzzle = generatePuzzle(diff, seedParam);
-        } catch {
-          puzzle = getDailyPuzzle(diff);
-        }
-      } else {
-        puzzle = getDailyPuzzle(diff);
-      }
-      setDifficulty(diff);
-      setGameState(createGameState(puzzle, diff));
-      setGenerating(false);
-    }, 50);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Timer: starts when canvas is visible, stops when solved/revealing
-  useEffect(() => {
-    if (!gameState || gameState.solved || gameState.revealingSolution) {
-      if (timerRef.current) clearInterval(timerRef.current);
-      return;
-    }
-
-    if (canvasVisible && !timerRef.current) {
-      timerRef.current = setInterval(() => {
-        setGameState((prev) =>
-          prev ? { ...prev, timer: prev.timer + 1 } : prev,
-        );
-      }, 1000);
-    }
-
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [canvasVisible, gameState?.solved, gameState?.revealingSolution]);
-
-  const handleCellEnterCb = useCallback(
-    (cell: Point) => {
-      if (!gameState || gameState.solved || gameState.revealingSolution) return;
-      setGameState((prev) => {
-        if (!prev) return prev;
-        const update = handleCellEnter(prev, cell);
-        if (update.checkpointReached) {
-          setCheckpointReached({ ...update.checkpointReached });
-        }
-        if (update.puzzleSolved) {
-          setPuzzleSolvedAnim(true);
-        }
-        if (update.allCheckpointsReached) {
-          setRemainingCellsPing([...update.allCheckpointsReached]);
-        }
-        return update.state;
-      });
-    },
-    [gameState?.solved, gameState?.revealingSolution],
-  );
-
-  const handleDragStartCb = useCallback(
-    (cell: Point) => {
-      if (!gameState || gameState.solved || gameState.revealingSolution) return;
-      setGameState((prev) => {
-        if (!prev) return prev;
-        const update = handleDragStart(prev, cell);
-        if (update.checkpointReached) {
-          setCheckpointReached({ ...update.checkpointReached });
-        }
-        if (update.puzzleSolved) {
-          setPuzzleSolvedAnim(true);
-        }
-        if (update.allCheckpointsReached) {
-          setRemainingCellsPing([...update.allCheckpointsReached]);
-        }
-        return update.state;
-      });
-    },
-    [gameState?.solved, gameState?.revealingSolution],
-  );
-
-  const handleDragEndCb = useCallback(() => {}, []);
-
-  const handleLongPressCb = useCallback(() => {
-    if (!gameState || gameState.solved || gameState.hintsRemaining <= 0) return;
-    setGameState((prev) => {
-      if (!prev) return prev;
-      const update = requestHint(prev);
-      if (update.hintCell) {
-        setHintCell({ ...update.hintCell });
-      }
-      return update.state;
-    });
-  }, [gameState?.solved, gameState?.hintsRemaining]);
-
-  const handleReset = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    setPuzzleSolvedAnim(false);
-    setCheckpointReached(null);
-    setHintCell(null);
-    setGameState((prev) => (prev ? resetGame(prev) : prev));
-    // Restart the timer interval immediately after reset
-    if (canvasVisible) {
-      timerRef.current = setInterval(() => {
-        setGameState((prev) =>
-          prev ? { ...prev, timer: prev.timer + 1 } : prev,
-        );
-      }, 1000);
-    }
-  }, [canvasVisible]);
-
-  const handleNewPuzzle = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    setPuzzleSolvedAnim(false);
-    setCheckpointReached(null);
-    setHintCell(null);
-    setGenerating(true);
-    // Defer generation so the loading animation can paint first
-    setTimeout(() => {
-      const puzzle = getRandomPuzzle(difficulty);
-      setGameState(createGameState(puzzle, difficulty));
-      setGenerating(false);
-    }, 50);
-  }, [difficulty]);
-
-  const handleDifficultyChange = useCallback((d: Difficulty) => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    setDifficulty(d);
-    setPuzzleSolvedAnim(false);
-    setCheckpointReached(null);
-    setHintCell(null);
-    setGenerating(true);
-    // Defer generation so the loading animation can paint first
-    setTimeout(() => {
-      const puzzle = getDailyPuzzle(d);
-      setGameState(createGameState(puzzle, d));
-      setGenerating(false);
-    }, 50);
-  }, []);
-
-  const handleHint = useCallback(() => {
-    setGameState((prev) => {
-      if (!prev) return prev;
-      const update = requestHint(prev);
-      if (update.hintCell) {
-        setHintCell({ ...update.hintCell });
-      }
-      return update.state;
-    });
-  }, []);
-
-  const handleRevealSolution = useCallback(() => {
-    setGameState((prev) => (prev ? revealSolution(prev) : prev));
-  }, []);
-
-  const handleShare = useCallback(() => {
-    if (!gameState) return;
-    const text = generateShareText(gameState);
-    if (!text) return;
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text).then(() => {
-        setShareTooltip("Copied!");
-        setTimeout(() => setShareTooltip(null), 2000);
-      });
-    }
-  }, [gameState]);
-
-  const handleShareChallenge = useCallback(() => {
-    if (!gameState) return;
-    const relUrl = generateChallengeUrl(gameState);
-    const fullUrl = `${window.location.origin}${window.location.pathname}${relUrl}`;
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(fullUrl).then(() => {
-        setShareTooltip("Link copied!");
-        setTimeout(() => setShareTooltip(null), 2000);
-      });
-    }
-  }, [gameState]);
-
-  // Reveal solution animation: step through solution path
-  const revealActive = gameState?.revealingSolution ?? false;
-  const pathLen = gameState?.path.length ?? 0;
-  const solutionLen = gameState?.solutionPath.length ?? 0;
-
-  useEffect(() => {
-    if (!revealActive || pathLen >= solutionLen) return;
-
-    const timer = setTimeout(() => {
-      setGameState((prev) => {
-        if (!prev) return prev;
-        const nextIdx = prev.path.length;
-        if (nextIdx >= prev.solutionPath.length) return prev;
-        const nextCell = prev.solutionPath[nextIdx];
-        const gridCell = prev.grid[nextCell.y][nextCell.x];
-        const newPath = [...prev.path, nextCell];
-        const lastCp =
-          gridCell.number !== undefined
-            ? gridCell.number
-            : prev.lastCheckpointNumber;
-        return {
-          ...prev,
-          path: newPath,
-          lastCheckpointNumber: lastCp,
-          solved: newPath.length === prev.totalCells,
-        };
-      });
-    }, 80);
-
-    return () => clearTimeout(timer);
-  }, [revealActive, pathLen, solutionLen]);
-
-  // Derive completion anim for reveal
-  const showRevealComplete =
-    (gameState?.solved && gameState?.revealingSolution) ?? false;
-  useEffect(() => {
-    if (showRevealComplete && !puzzleSolvedAnim) {
-      // Use requestAnimationFrame to avoid synchronous setState in effect
-      const raf = requestAnimationFrame(() => setPuzzleSolvedAnim(true));
-      return () => cancelAnimationFrame(raf);
-    }
-  }, [showRevealComplete, puzzleSolvedAnim]);
+  const {
+    difficulty,
+    gameState,
+    generating,
+    checkpointReached,
+    puzzleSolvedAnim,
+    hintCell,
+    remainingCellsPing,
+    shareTooltip,
+    handleCellEnter,
+    handleDragStart,
+    handleDragEnd,
+    handleLongPress,
+    handleReset,
+    handleNewPuzzle,
+    handleDifficultyChange,
+    handleHint,
+    handleRevealSolution,
+    handleShare,
+    handleShareChallenge,
+    canvasWrapperRef,
+  } = useGame();
 
   return (
     <div className="flex flex-col items-center min-h-dvh bg-[#F8F9FA] select-none">
@@ -372,10 +97,10 @@ export default function ZipGame() {
         {gameState && (
           <GameCanvas
             gameState={gameState}
-            onCellEnter={handleCellEnterCb}
-            onDragStart={handleDragStartCb}
-            onDragEnd={handleDragEndCb}
-            onLongPress={handleLongPressCb}
+            onCellEnter={handleCellEnter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onLongPress={handleLongPress}
             checkpointReached={checkpointReached}
             puzzleSolved={puzzleSolvedAnim}
             hintCell={hintCell}
