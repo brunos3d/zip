@@ -580,6 +580,22 @@ export function render(
   // Layer 3.5: Remaining cells ping
   drawRemainingCellsPing(ctx, animState, rc, theme);
 
+  // Layer 3.7: Path cell backgrounds
+  if (path.length > 0 && seed) {
+    const [colorA] = getGradientColors(seed);
+    const [h, s, l] = parseHsl(colorA);
+    const bgColor = `hsla(${h}, ${s}%, ${l}%, 0.3)`;
+    ctx.fillStyle = bgColor;
+    for (const p of path) {
+      ctx.fillRect(
+        rc.padding + p.x * rc.cellSize,
+        rc.padding + p.y * rc.cellSize,
+        rc.cellSize,
+        rc.cellSize,
+      );
+    }
+  }
+
   // Layer 4: Path
   drawPath(ctx, path, rc, theme, animState, totalCells ?? 1, seed ?? "");
 
