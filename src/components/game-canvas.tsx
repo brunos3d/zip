@@ -266,6 +266,8 @@ export default function GameCanvas({
               gameState.lastCheckpointNumber,
               gameState.solved ? tiltStateRef.current : null,
               gameState.solved ? tiltConfigRef.current : null,
+              gameState.totalCells,
+              gameState.seed,
             );
           }
         }

@@ -1,7 +1,57 @@
 import { Cell, Point, GridConfig, InvalidMoveFeedback } from "@/engine/types";
-import { pointKey } from "@/engine/grid-utils";
+import { pointKey, createRng, seedToNumber } from "@/engine/grid-utils";
 import { AnimationState, easeOutBack } from "@/render/animations";
 import { TiltState, TiltConfig, getTiltTransform } from "@/render/tilt";
+
+/** Generate two vibrant HSL colors from a seed string */
+function seedToGradientColors(seed: string): [string, string, string] {
+  const rng = createRng(seedToNumber(seed));
+  const hue1 = Math.floor(rng() * 360);
+  // Second hue is 90-180 degrees away for good contrast
+  const hue2 = (hue1 + 90 + Math.floor(rng() * 90)) % 360;
+  return [
+    `hsl(${hue1}, 75%, 55%)`,
+    `hsl(${hue2}, 75%, 55%)`,
+    `hsla(${hue1}, 75%, 55%, 0.3)`,
+  ];
+}
+
+/** Parse an HSL string to [h, s, l] numeric values */
+function parseHsl(hsl: string): [number, number, number] {
+  const m = hsl.match(/hsl[a]?\((\d+),\s*(\d+)%,\s*(\d+)%/);
+  if (!m) return [0, 75, 55];
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+/** Lerp between two HSL color strings */
+function lerpHsl(a: string, b: string, t: number): string {
+  const [h1, s1, l1] = parseHsl(a);
+  const [h2, s2, l2] = parseHsl(b);
+  // Shortest-arc hue interpolation
+  let dh = h2 - h1;
+  if (dh > 180) dh -= 360;
+  if (dh < -180) dh += 360;
+  const h = (((h1 + dh * t) % 360) + 360) % 360;
+  const s = s1 + (s2 - s1) * t;
+  const l = l1 + (l2 - l1) * t;
+  return `hsl(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%)`;
+}
+
+function lerpHslAlpha(a: string, b: string, t: number, alpha: number): string {
+  const [h1, s1, l1] = parseHsl(a);
+  const [h2, s2, l2] = parseHsl(b);
+  let dh = h2 - h1;
+  if (dh > 180) dh -= 360;
+  if (dh < -180) dh += 360;
+  const h = (((h1 + dh * t) % 360) + 360) % 360;
+  const s = s1 + (s2 - s1) * t;
+  const l = l1 + (l2 - l1) * t;
+  return `hsla(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%, ${alpha})`;
+}
+
+/** Cache: avoid recomputing colors every frame */
+let gradientCacheSeed = "";
+let gradientCacheColors: [string, string, string] = ["", "", ""];
 
 export interface RenderConfig {
   cellSize: number;
@@ -182,29 +232,16 @@ function drawNumbers(
         ctx.shadowBlur = 0;
       }
 
-      // Circle background
+      // Circle background — always black
       ctx.beginPath();
       ctx.arc(0, 0, radius, 0, Math.PI * 2);
-      ctx.fillStyle =
-        isReached || isStartHighlight
-          ? theme.checkpointReached
-          : theme.numberBackground;
+      ctx.fillStyle = "#000000";
       ctx.fill();
 
-      // Glow for reached checkpoints or start highlight
-      if (isReached || isStartHighlight) {
-        ctx.shadowColor = theme.checkpointReached;
-        ctx.shadowBlur = 8;
-        ctx.beginPath();
-        ctx.arc(0, 0, radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      }
-
-      // Number text
+      // Number text — always white
       const fontSize = Math.max(12, cellSize * 0.3);
       ctx.font = theme.textFont.replace("VAR_SIZE", String(fontSize));
-      ctx.fillStyle = theme.numberColor;
+      ctx.fillStyle = "#FFFFFF";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(String(cell.number), 0, 1);
@@ -214,71 +251,96 @@ function drawNumbers(
   }
 }
 
+function getGradientColors(seed: string): [string, string, string] {
+  if (seed !== gradientCacheSeed) {
+    gradientCacheSeed = seed;
+    gradientCacheColors = seedToGradientColors(seed);
+  }
+  return gradientCacheColors;
+}
+
 function drawPath(
   ctx: CanvasRenderingContext2D,
   path: Point[],
   rc: RenderConfig,
   theme: Theme,
   animState: AnimationState,
+  totalCells: number,
+  seed: string,
 ): void {
+  const [colorA, colorB] = getGradientColors(seed);
+
   if (path.length < 2) {
     // Draw single dot if path has one cell
     if (path.length === 1) {
       const { cx, cy } = getCellCenter(path[0].x, path[0].y, rc);
       ctx.beginPath();
       ctx.arc(cx, cy, rc.cellSize * 0.15, 0, Math.PI * 2);
-      ctx.fillStyle = theme.pathColor;
+      ctx.fillStyle = colorA;
       ctx.fill();
     }
     return;
   }
 
-  const lineWidth = Math.max(6, rc.cellSize * 0.2);
-
-  // Shadow
-  ctx.save();
-  ctx.shadowColor = theme.pathGlow;
-  ctx.shadowBlur = lineWidth * 0.8;
-  ctx.strokeStyle = theme.pathColor;
-  ctx.lineWidth = lineWidth;
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-
-  ctx.beginPath();
-  const first = getCellCenter(path[0].x, path[0].y, rc);
-  ctx.moveTo(first.cx, first.cy);
+  const lineWidth = rc.cellSize * 0.35 * 2 + 2;
 
   // Determine how many segments to draw (for animation)
   const totalSegments = path.length - 1;
   const drawSegments = Math.ceil(totalSegments * animState.pathExtendProgress);
 
-  for (let i = 1; i <= drawSegments; i++) {
-    const p = getCellCenter(path[i].x, path[i].y, rc);
+  // Draw each segment with its own gradient color
+  ctx.save();
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
 
-    // For the last segment during animation, interpolate
+  for (let i = 1; i <= drawSegments; i++) {
+    const prev = getCellCenter(path[i - 1].x, path[i - 1].y, rc);
+    const cur = getCellCenter(path[i].x, path[i].y, rc);
+
+    const tPrev = (i - 1) / totalCells;
+    const tCur = i / totalCells;
+
+    let ex = cur.cx;
+    let ey = cur.cy;
+
+    // For the last segment during animation, interpolate position
     if (i === drawSegments && animState.pathExtendProgress < 1) {
-      const prev = getCellCenter(path[i - 1].x, path[i - 1].y, rc);
       const frac =
         animState.pathExtendProgress * totalSegments - (drawSegments - 1);
-      const ix = prev.cx + (p.cx - prev.cx) * frac;
-      const iy = prev.cy + (p.cy - prev.cy) * frac;
-      ctx.lineTo(ix, iy);
-    } else {
-      ctx.lineTo(p.cx, p.cy);
+      ex = prev.cx + (cur.cx - prev.cx) * frac;
+      ey = prev.cy + (cur.cy - prev.cy) * frac;
     }
+
+    // Per-segment linear gradient for seamless color transition
+    const grad = ctx.createLinearGradient(prev.cx, prev.cy, ex, ey);
+    grad.addColorStop(0, lerpHsl(colorA, colorB, tPrev));
+    grad.addColorStop(1, lerpHsl(colorA, colorB, tCur));
+
+    const glowColor = lerpHslAlpha(colorA, colorB, (tPrev + tCur) / 2, 0.3);
+
+    ctx.beginPath();
+    ctx.moveTo(prev.cx, prev.cy);
+    ctx.lineTo(ex, ey);
+    ctx.strokeStyle = grad;
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = lineWidth * 0.8;
+    ctx.stroke();
   }
 
-  ctx.stroke();
-  ctx.restore();
+  ctx.shadowBlur = 0;
 
-  // Draw dots at each cell on path
-  ctx.fillStyle = theme.pathColor;
+  // Draw dots at each cell on path with matching gradient color
   for (let i = 0; i <= Math.min(drawSegments, path.length - 1); i++) {
     const { cx, cy } = getCellCenter(path[i].x, path[i].y, rc);
+    const t = i / totalCells;
+    ctx.fillStyle = lerpHsl(colorA, colorB, t);
     ctx.beginPath();
     ctx.arc(cx, cy, lineWidth * 0.35, 0, Math.PI * 2);
     ctx.fill();
   }
+
+  ctx.restore();
 }
 
 function drawHoverPreview(
@@ -449,6 +511,8 @@ export function render(
   lastCheckpointNumber?: number,
   tiltState?: TiltState | null,
   tiltConfig?: TiltConfig | null,
+  totalCells?: number,
+  seed?: string,
 ): void {
   const w = canvas.width / dpr;
   const h = canvas.height / dpr;
@@ -517,7 +581,7 @@ export function render(
   drawRemainingCellsPing(ctx, animState, rc, theme);
 
   // Layer 4: Path
-  drawPath(ctx, path, rc, theme, animState);
+  drawPath(ctx, path, rc, theme, animState, totalCells ?? 1, seed ?? "");
 
   // Layer 5: Hint glow
   drawHintGlow(ctx, animState, rc, theme);
