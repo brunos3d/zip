@@ -157,7 +157,13 @@ export default function ZipGame() {
     setCheckpointReached(null);
     setHintCell(null);
     setGameState((prev) => resetGame(prev));
-  }, []);
+    // Restart the timer interval immediately after reset
+    if (canvasVisible) {
+      timerRef.current = setInterval(() => {
+        setGameState((prev) => ({ ...prev, timer: prev.timer + 1 }));
+      }, 1000);
+    }
+  }, [canvasVisible]);
 
   const handleNewPuzzle = useCallback(() => {
     if (timerRef.current) {
