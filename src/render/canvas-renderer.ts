@@ -196,6 +196,14 @@ function drawEdgeWalls(
   const wallThickness = Math.max(3, cellSize * 0.08);
 
   ctx.save();
+
+  // Clip to the grid area so walls at the board edge don't extend outside
+  const gridW = rc.gridConfig.cols * cellSize;
+  const gridH = rc.gridConfig.rows * cellSize;
+  ctx.beginPath();
+  ctx.rect(padding, padding, gridW, gridH);
+  ctx.clip();
+
   ctx.strokeStyle = "#000000";
   ctx.lineWidth = wallThickness;
   ctx.lineCap = "round";
@@ -619,10 +627,7 @@ export function render(
   }
   ctx.drawImage(gridCache, 0, 0, w, h);
 
-  // Layer 1.5: Edge walls — thick black lines between cells
-  if (edgeWalls && edgeWalls.size > 0) {
-    drawEdgeWalls(ctx, edgeWalls, rc);
-  }
+  // Layer 1.5: Edge walls are drawn later (after path backgrounds)
 
   // Layer 2: Hover preview
   drawHoverPreview(ctx, hoverCell, rc, theme, pathSet);
@@ -647,6 +652,11 @@ export function render(
         rc.cellSize,
       );
     }
+  }
+
+  // Layer 3.8: Edge walls — drawn after path backgrounds so they appear on top
+  if (edgeWalls && edgeWalls.size > 0) {
+    drawEdgeWalls(ctx, edgeWalls, rc);
   }
 
   // Layer 4: Path
