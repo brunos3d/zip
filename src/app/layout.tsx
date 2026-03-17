@@ -19,6 +19,19 @@ export const metadata: Metadata = {
   icons: {
     icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>",
   },
+  openGraph: {
+    title: "Zip | Daily Puzzle Game",
+    description:
+      "Draw a single continuous path across every cell. A daily logic puzzle inspired by NYT and LinkedIn games.",
+    images: [{ url: "/og_image.png" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Zip | Daily Puzzle Game",
+    description:
+      "Draw a single continuous path across every cell. A daily logic puzzle inspired by NYT and LinkedIn games.",
+    images: ["/og_image.png"],
+  },
 };
 
 export default function RootLayout({
