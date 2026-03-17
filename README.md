@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://zip-game.vercel.app/?seed=medium-1337">
+  <a href="https://zip-game.vercel.app/">
     <img alt="zip game preview" src="./.github/preview.png" />
   </a>
 </p>
