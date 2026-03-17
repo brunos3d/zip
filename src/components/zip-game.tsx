@@ -23,31 +23,22 @@ import TopBar from "@/components/top-bar";
 import Controls from "@/components/controls";
 import PuzzleLoading from "@/components/puzzle-loading";
 
-function initFromUrl(): { difficulty: Difficulty; state: GameState } | null {
-  if (typeof window === "undefined") return null;
+function getInitialDifficulty(): Difficulty {
+  if (typeof window === "undefined") return "easy";
   const params = new URLSearchParams(window.location.search);
   const seedParam = params.get("seed");
-  if (!seedParam) return null;
+  if (!seedParam) return "easy";
   try {
-    const { difficulty } = parseSeed(seedParam);
-    const puzzle = generatePuzzle(difficulty, seedParam);
-    return { difficulty, state: createGameState(puzzle, difficulty) };
+    return parseSeed(seedParam).difficulty;
   } catch {
-    return null;
+    return "easy";
   }
 }
 
 export default function ZipGame() {
-  const [difficulty, setDifficulty] = useState<Difficulty>(() => {
-    const fromUrl = initFromUrl();
-    return fromUrl ? fromUrl.difficulty : "easy";
-  });
-  const [gameState, setGameState] = useState<GameState>(() => {
-    const fromUrl = initFromUrl();
-    if (fromUrl) return fromUrl.state;
-    const puzzle = getDailyPuzzle("easy");
-    return createGameState(puzzle, "easy");
-  });
+  const [difficulty, setDifficulty] =
+    useState<Difficulty>(getInitialDifficulty);
+  const [gameState, setGameState] = useState<GameState | null>(null);
   const [checkpointReached, setCheckpointReached] = useState<Point | null>(
     null,
   );
@@ -57,7 +48,7 @@ export default function ZipGame() {
     null,
   );
   const [shareTooltip, setShareTooltip] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
+  const [generating, setGenerating] = useState(true);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const [canvasVisible, setCanvasVisible] = useState(false);
@@ -74,16 +65,44 @@ export default function ZipGame() {
     return () => observer.disconnect();
   }, []);
 
+  // Generate initial puzzle on mount (deferred so loading animation paints first)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams(window.location.search);
+      const seedParam = params.get("seed");
+      let puzzle;
+      let diff = difficulty;
+      if (seedParam) {
+        try {
+          const parsed = parseSeed(seedParam);
+          diff = parsed.difficulty;
+          puzzle = generatePuzzle(diff, seedParam);
+        } catch {
+          puzzle = getDailyPuzzle(diff);
+        }
+      } else {
+        puzzle = getDailyPuzzle(diff);
+      }
+      setDifficulty(diff);
+      setGameState(createGameState(puzzle, diff));
+      setGenerating(false);
+    }, 50);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Timer: starts when canvas is visible, stops when solved/revealing
   useEffect(() => {
-    if (gameState.solved || gameState.revealingSolution) {
+    if (!gameState || gameState.solved || gameState.revealingSolution) {
       if (timerRef.current) clearInterval(timerRef.current);
       return;
     }
 
     if (canvasVisible && !timerRef.current) {
       timerRef.current = setInterval(() => {
-        setGameState((prev) => ({ ...prev, timer: prev.timer + 1 }));
+        setGameState((prev) =>
+          prev ? { ...prev, timer: prev.timer + 1 } : prev,
+        );
       }, 1000);
     }
 
@@ -93,12 +112,13 @@ export default function ZipGame() {
         timerRef.current = null;
       }
     };
-  }, [canvasVisible, gameState.solved, gameState.revealingSolution]);
+  }, [canvasVisible, gameState?.solved, gameState?.revealingSolution]);
 
   const handleCellEnterCb = useCallback(
     (cell: Point) => {
-      if (gameState.solved || gameState.revealingSolution) return;
+      if (!gameState || gameState.solved || gameState.revealingSolution) return;
       setGameState((prev) => {
+        if (!prev) return prev;
         const update = handleCellEnter(prev, cell);
         if (update.checkpointReached) {
           setCheckpointReached({ ...update.checkpointReached });
@@ -112,13 +132,14 @@ export default function ZipGame() {
         return update.state;
       });
     },
-    [gameState.solved, gameState.revealingSolution],
+    [gameState?.solved, gameState?.revealingSolution],
   );
 
   const handleDragStartCb = useCallback(
     (cell: Point) => {
-      if (gameState.solved || gameState.revealingSolution) return;
+      if (!gameState || gameState.solved || gameState.revealingSolution) return;
       setGameState((prev) => {
+        if (!prev) return prev;
         const update = handleDragStart(prev, cell);
         if (update.checkpointReached) {
           setCheckpointReached({ ...update.checkpointReached });
@@ -132,21 +153,22 @@ export default function ZipGame() {
         return update.state;
       });
     },
-    [gameState.solved, gameState.revealingSolution],
+    [gameState?.solved, gameState?.revealingSolution],
   );
 
   const handleDragEndCb = useCallback(() => {}, []);
 
   const handleLongPressCb = useCallback(() => {
-    if (gameState.solved || gameState.hintsRemaining <= 0) return;
+    if (!gameState || gameState.solved || gameState.hintsRemaining <= 0) return;
     setGameState((prev) => {
+      if (!prev) return prev;
       const update = requestHint(prev);
       if (update.hintCell) {
         setHintCell({ ...update.hintCell });
       }
       return update.state;
     });
-  }, [gameState.solved, gameState.hintsRemaining]);
+  }, [gameState?.solved, gameState?.hintsRemaining]);
 
   const handleReset = useCallback(() => {
     if (timerRef.current) {
@@ -156,11 +178,13 @@ export default function ZipGame() {
     setPuzzleSolvedAnim(false);
     setCheckpointReached(null);
     setHintCell(null);
-    setGameState((prev) => resetGame(prev));
+    setGameState((prev) => (prev ? resetGame(prev) : prev));
     // Restart the timer interval immediately after reset
     if (canvasVisible) {
       timerRef.current = setInterval(() => {
-        setGameState((prev) => ({ ...prev, timer: prev.timer + 1 }));
+        setGameState((prev) =>
+          prev ? { ...prev, timer: prev.timer + 1 } : prev,
+        );
       }, 1000);
     }
   }, [canvasVisible]);
@@ -202,6 +226,7 @@ export default function ZipGame() {
 
   const handleHint = useCallback(() => {
     setGameState((prev) => {
+      if (!prev) return prev;
       const update = requestHint(prev);
       if (update.hintCell) {
         setHintCell({ ...update.hintCell });
@@ -211,10 +236,11 @@ export default function ZipGame() {
   }, []);
 
   const handleRevealSolution = useCallback(() => {
-    setGameState((prev) => revealSolution(prev));
+    setGameState((prev) => (prev ? revealSolution(prev) : prev));
   }, []);
 
   const handleShare = useCallback(() => {
+    if (!gameState) return;
     const text = generateShareText(gameState);
     if (!text) return;
     if (navigator.clipboard) {
@@ -226,6 +252,7 @@ export default function ZipGame() {
   }, [gameState]);
 
   const handleShareChallenge = useCallback(() => {
+    if (!gameState) return;
     const relUrl = generateChallengeUrl(gameState);
     const fullUrl = `${window.location.origin}${window.location.pathname}${relUrl}`;
     if (navigator.clipboard) {
@@ -237,15 +264,16 @@ export default function ZipGame() {
   }, [gameState]);
 
   // Reveal solution animation: step through solution path
-  const revealActive = gameState.revealingSolution;
-  const pathLen = gameState.path.length;
-  const solutionLen = gameState.solutionPath.length;
+  const revealActive = gameState?.revealingSolution ?? false;
+  const pathLen = gameState?.path.length ?? 0;
+  const solutionLen = gameState?.solutionPath.length ?? 0;
 
   useEffect(() => {
     if (!revealActive || pathLen >= solutionLen) return;
 
     const timer = setTimeout(() => {
       setGameState((prev) => {
+        if (!prev) return prev;
         const nextIdx = prev.path.length;
         if (nextIdx >= prev.solutionPath.length) return prev;
         const nextCell = prev.solutionPath[nextIdx];
@@ -268,7 +296,8 @@ export default function ZipGame() {
   }, [revealActive, pathLen, solutionLen]);
 
   // Derive completion anim for reveal
-  const showRevealComplete = gameState.solved && gameState.revealingSolution;
+  const showRevealComplete =
+    (gameState?.solved && gameState?.revealingSolution) ?? false;
   useEffect(() => {
     if (showRevealComplete && !puzzleSolvedAnim) {
       // Use requestAnimationFrame to avoid synchronous setState in effect
@@ -280,10 +309,10 @@ export default function ZipGame() {
   return (
     <div className="flex flex-col items-center min-h-dvh bg-[#F8F9FA] select-none">
       <TopBar
-        timer={gameState.timer}
-        moves={gameState.moves}
+        timer={gameState?.timer ?? 0}
+        moves={gameState?.moves ?? 0}
         difficulty={difficulty}
-        seed={gameState.seed}
+        seed={gameState?.seed ?? ""}
         onReset={handleReset}
         onNewPuzzle={handleNewPuzzle}
       />
@@ -295,9 +324,9 @@ export default function ZipGame() {
         onShare={handleShare}
         onRevealSolution={handleRevealSolution}
         onShareChallenge={handleShareChallenge}
-        hintsRemaining={gameState.hintsRemaining}
-        solved={gameState.solved}
-        revealingSolution={gameState.revealingSolution}
+        hintsRemaining={gameState?.hintsRemaining ?? 0}
+        solved={gameState?.solved ?? false}
+        revealingSolution={gameState?.revealingSolution ?? false}
         shareTooltip={shareTooltip}
       />
 
@@ -308,49 +337,51 @@ export default function ZipGame() {
             <div
               className="h-full bg-blue-500 rounded-full transition-all duration-300 ease-out"
               style={{
-                width: `${(gameState.path.length / gameState.totalCells) * 100}%`,
+                width: `${gameState ? (gameState.path.length / gameState.totalCells) * 100 : 0}%`,
               }}
             />
           </div>
           <span className="text-xs text-gray-400 font-mono tabular-nums min-w-16 text-right">
-            {gameState.path.length}/{gameState.totalCells}
+            {gameState?.path.length ?? 0}/{gameState?.totalCells ?? 0}
           </span>
         </div>
       </div>
 
       {/* Completion banner */}
-      {gameState.solved && (
+      {gameState?.solved && (
         <div className="w-full max-w-150 mx-auto px-4 pb-4">
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-center">
             <p className="text-emerald-800 font-semibold text-lg">
               Puzzle Complete!
             </p>
             <p className="text-emerald-600 text-sm mt-0.5">
-              {gameState.revealingSolution
+              {gameState?.revealingSolution
                 ? "Solution revealed"
-                : `Solved in ${gameState.moves} moves`}
+                : `Solved in ${gameState?.moves ?? 0} moves`}
             </p>
           </div>
         </div>
       )}
 
-      {generating && <PuzzleLoading />}
+      {(!gameState || generating) && <PuzzleLoading />}
 
       <div
         ref={canvasWrapperRef}
-        className={`flex-1 flex w-full${generating ? " hidden" : ""}`}
+        className={`flex-1 flex w-full${!gameState || generating ? " hidden" : ""}`}
       >
-        <GameCanvas
-          gameState={gameState}
-          onCellEnter={handleCellEnterCb}
-          onDragStart={handleDragStartCb}
-          onDragEnd={handleDragEndCb}
-          onLongPress={handleLongPressCb}
-          checkpointReached={checkpointReached}
-          puzzleSolved={puzzleSolvedAnim}
-          hintCell={hintCell}
-          remainingCellsPing={remainingCellsPing}
-        />
+        {gameState && (
+          <GameCanvas
+            gameState={gameState}
+            onCellEnter={handleCellEnterCb}
+            onDragStart={handleDragStartCb}
+            onDragEnd={handleDragEndCb}
+            onLongPress={handleLongPressCb}
+            checkpointReached={checkpointReached}
+            puzzleSolved={puzzleSolvedAnim}
+            hintCell={hintCell}
+            remainingCellsPing={remainingCellsPing}
+          />
+        )}
       </div>
 
       {/* Footer */}
