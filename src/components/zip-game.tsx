@@ -21,6 +21,7 @@ import {
 import GameCanvas from "@/components/game-canvas";
 import TopBar from "@/components/top-bar";
 import Controls from "@/components/controls";
+import PuzzleLoading from "@/components/puzzle-loading";
 
 function initFromUrl(): { difficulty: Difficulty; state: GameState } | null {
   if (typeof window === "undefined") return null;
@@ -56,6 +57,7 @@ export default function ZipGame() {
     null,
   );
   const [shareTooltip, setShareTooltip] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const [canvasVisible, setCanvasVisible] = useState(false);
@@ -165,8 +167,13 @@ export default function ZipGame() {
     setPuzzleSolvedAnim(false);
     setCheckpointReached(null);
     setHintCell(null);
-    const puzzle = getRandomPuzzle(difficulty);
-    setGameState(createGameState(puzzle, difficulty));
+    setGenerating(true);
+    // Defer generation so the loading animation can paint first
+    setTimeout(() => {
+      const puzzle = getRandomPuzzle(difficulty);
+      setGameState(createGameState(puzzle, difficulty));
+      setGenerating(false);
+    }, 50);
   }, [difficulty]);
 
   const handleDifficultyChange = useCallback((d: Difficulty) => {
@@ -178,8 +185,13 @@ export default function ZipGame() {
     setPuzzleSolvedAnim(false);
     setCheckpointReached(null);
     setHintCell(null);
-    const puzzle = getDailyPuzzle(d);
-    setGameState(createGameState(puzzle, d));
+    setGenerating(true);
+    // Defer generation so the loading animation can paint first
+    setTimeout(() => {
+      const puzzle = getDailyPuzzle(d);
+      setGameState(createGameState(puzzle, d));
+      setGenerating(false);
+    }, 50);
   }, []);
 
   const handleHint = useCallback(() => {
@@ -316,7 +328,12 @@ export default function ZipGame() {
         </div>
       )}
 
-      <div ref={canvasWrapperRef} className="flex-1 flex w-full">
+      {generating && <PuzzleLoading />}
+
+      <div
+        ref={canvasWrapperRef}
+        className={`flex-1 flex w-full${generating ? " hidden" : ""}`}
+      >
         <GameCanvas
           gameState={gameState}
           onCellEnter={handleCellEnterCb}

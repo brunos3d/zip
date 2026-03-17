@@ -1,5 +1,6 @@
 import {
   Point,
+  Cell,
   GridConfig,
   PuzzleData,
   Difficulty,
@@ -16,6 +17,7 @@ import {
   seedToNumber,
   dateSeed,
 } from "@/engine/grid-utils";
+import { solve } from "@/engine/puzzle-solver";
 
 /**
  * Generate a Hamiltonian path covering the entire grid using
@@ -185,8 +187,14 @@ export function generatePuzzle(
     grid[point.y][point.x].number = num;
   }
 
-  // Generate edge walls: collect path edges, then wall off some non-path edges
-  const edgeWalls = generateEdgeWalls(path, config, difficulty, rng);
+  // Only add edge walls if the puzzle has multiple solutions without them
+  const edgeWalls = generateEdgeWallsIfNeeded(
+    path,
+    grid,
+    config,
+    difficulty,
+    rng,
+  );
 
   return {
     grid,
@@ -199,53 +207,95 @@ export function generatePuzzle(
   };
 }
 
-/** Wall density per difficulty — fraction of non-path edges to wall off */
-const WALL_DENSITY: Record<Difficulty, number> = {
-  easy: 0.15,
-  medium: 0.2,
-  hard: 0.25,
-  expert: 0.3,
-};
-
 /**
- * Generate edge walls between adjacent cells.
- * Walls are placed on edges NOT used by the solution path.
- * This constrains alternate routes and helps ensure a unique solution.
+ * Check if a puzzle is uniquely solvable, and if not, add edge walls
+ * incrementally until it becomes unique (or we run out of candidates).
  */
-function generateEdgeWalls(
+function generateEdgeWallsIfNeeded(
   path: Point[],
+  grid: Cell[][],
   config: GridConfig,
   difficulty: Difficulty,
   rng: () => number,
 ): Set<string> {
-  // Collect all edges used by the solution path
+  const totalCells = config.cols * config.rows;
+  // Budget: short time limits and capped iterations to avoid freezing
+  const solveTime = totalCells <= 49 ? 300 : 150;
+  const maxAddAttempts = Math.min(totalCells, 40);
+  const maxPruneAttempts = 20;
+
+  // First: check if already unique without any walls
+  const noWalls = new Set<string>();
+  const result = solve(
+    grid,
+    config,
+    { maxSolutions: 2, timeLimit: solveTime },
+    noWalls,
+  );
+  if (result.isUnique) {
+    return noWalls; // No walls needed
+  }
+
+  // Collect all non-path edges as wall candidates
   const pathEdges = new Set<string>();
   for (let i = 1; i < path.length; i++) {
     pathEdges.add(edgeWallKey(path[i - 1], path[i]));
   }
 
-  // Collect all possible internal edges in the grid
-  const nonPathEdges: string[] = [];
+  const candidates: string[] = [];
   for (let y = 0; y < config.rows; y++) {
     for (let x = 0; x < config.cols; x++) {
       const p: Point = { x, y };
-      // Right neighbor
       if (x + 1 < config.cols) {
         const key = edgeWallKey(p, { x: x + 1, y });
-        if (!pathEdges.has(key)) nonPathEdges.push(key);
+        if (!pathEdges.has(key)) candidates.push(key);
       }
-      // Down neighbor
       if (y + 1 < config.rows) {
         const key = edgeWallKey(p, { x, y: y + 1 });
-        if (!pathEdges.has(key)) nonPathEdges.push(key);
+        if (!pathEdges.has(key)) candidates.push(key);
       }
     }
   }
 
-  // Shuffle and pick a fraction based on difficulty
-  const shuffled = shuffleArray(nonPathEdges, rng);
-  const count = Math.floor(shuffled.length * WALL_DENSITY[difficulty]);
-  return new Set(shuffled.slice(0, count));
+  const shuffled = shuffleArray(candidates, rng);
+  const edgeWalls = new Set<string>();
+
+  // Add walls one at a time until the puzzle is unique (capped)
+  let added = 0;
+  for (const wall of shuffled) {
+    if (added >= maxAddAttempts) break;
+    edgeWalls.add(wall);
+    added++;
+    const check = solve(
+      grid,
+      config,
+      { maxSolutions: 2, timeLimit: solveTime },
+      edgeWalls,
+    );
+    if (check.isUnique) {
+      break;
+    }
+  }
+
+  // Pruning pass: try removing each wall — keep only those truly needed (capped)
+  const wallList = shuffleArray([...edgeWalls], rng);
+  let pruned = 0;
+  for (const wall of wallList) {
+    if (pruned >= maxPruneAttempts) break;
+    edgeWalls.delete(wall);
+    pruned++;
+    const check = solve(
+      grid,
+      config,
+      { maxSolutions: 2, timeLimit: solveTime },
+      edgeWalls,
+    );
+    if (!check.isUnique) {
+      edgeWalls.add(wall); // wall is essential, keep it
+    }
+  }
+
+  return edgeWalls;
 }
 
 /**
