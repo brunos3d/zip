@@ -13,9 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Zip — Daily Puzzle Game",
+  title: "Zip | Daily Puzzle Game",
   description:
     "Draw a single continuous path across every cell. A daily logic puzzle inspired by NYT and LinkedIn games.",
+  icons: {
+    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>",
+  },
 };
 
 export default function RootLayout({
