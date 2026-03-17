@@ -199,8 +199,9 @@ export default function GameCanvas({
 
   // Path change -> trigger animation & redraw
   useEffect(() => {
-    // During reveal, skip partial animation so the line extends seamlessly
-    animRef.current.pathExtendProgress = gameState.revealingSolution ? 1 : 0.7;
+    // Always snap to full extension — the 0.7→1 animation causes tip flicker
+    // during rapid dragging since each new cell resets progress
+    animRef.current.pathExtendProgress = 1;
     needsDrawRef.current = true;
   }, [gameState.path.length, gameState.revealingSolution]);
 

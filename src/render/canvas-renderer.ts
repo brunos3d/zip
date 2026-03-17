@@ -364,8 +364,14 @@ function drawPath(
     ctx.moveTo(prev.cx, prev.cy);
     ctx.lineTo(ex, ey);
     ctx.strokeStyle = grad;
-    ctx.shadowColor = glowColor;
-    ctx.shadowBlur = lineWidth * 0.8;
+    // Skip shadow on the last segment during animation to prevent tip flicker
+    if (i === drawSegments && animState.pathExtendProgress < 1) {
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = lineWidth * 0.8;
+    }
     ctx.stroke();
   }
 
