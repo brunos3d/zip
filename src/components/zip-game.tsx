@@ -352,6 +352,31 @@ export default function ZipGame() {
           remainingCellsPing={remainingCellsPing}
         />
       </div>
+
+      {/* Footer */}
+      <footer className="w-full py-4 px-4 text-center text-xs text-gray-400 space-y-1">
+        <p>
+          Created with <span className="text-red-400">❤️</span> by{" "}
+          <a
+            href="https://brunosilva.io"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-gray-600 transition-colors"
+          >
+            Bruno Silva
+          </a>
+        </p>
+        <p>
+          <a
+            href="https://github.com/brunos3d/zip"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 underline hover:text-gray-600 transition-colors"
+          >
+            ⭐ Star on GitHub
+          </a>
+        </p>
+      </footer>
     </div>
   );
 }
