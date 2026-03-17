@@ -54,6 +54,8 @@ export interface GameState {
   seed: string;
   invalidFeedback: InvalidMoveFeedback | null;
   revealingSolution: boolean;
+  /** Edge walls between adjacent cells */
+  edgeWalls: Set<string>;
 }
 
 export interface PuzzleData {
@@ -63,6 +65,8 @@ export interface PuzzleData {
   maxNumber: number;
   totalCells: number;
   seed: string;
+  /** Edge walls between adjacent cells */
+  edgeWalls: Set<string>;
 }
 
 /** Parse a seed string like "easy-042" */

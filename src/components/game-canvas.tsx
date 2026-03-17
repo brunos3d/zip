@@ -268,6 +268,7 @@ export default function GameCanvas({
               gameState.solved ? tiltConfigRef.current : null,
               gameState.totalCells,
               gameState.seed,
+              gameState.edgeWalls,
             );
           }
         }

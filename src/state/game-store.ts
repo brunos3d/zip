@@ -8,7 +8,7 @@ import {
 } from "@/engine/types";
 
 export type { GameState };
-import { pointKey, pointEquals, isAdjacent } from "@/engine/grid-utils";
+import { pointKey, pointEquals, isAdjacentPassable } from "@/engine/grid-utils";
 import { getHint } from "@/engine/puzzle-solver";
 
 export function createGameState(
@@ -31,6 +31,7 @@ export function createGameState(
     seed: puzzle.seed,
     invalidFeedback: null,
     revealingSolution: false,
+    edgeWalls: puzzle.edgeWalls,
   };
 }
 
@@ -105,10 +106,11 @@ export function handleCellEnter(state: GameState, cell: Point): GameUpdate {
     if (!start || !pointEquals(cell, start)) return { state: cleanState };
   }
 
-  // Must be adjacent to last cell
+  // Must be adjacent to last cell (and not blocked by edge wall)
   if (path.length > 0) {
     const last = path[path.length - 1];
-    if (!isAdjacent(last, cell)) return { state: cleanState };
+    if (!isAdjacentPassable(last, cell, state.edgeWalls))
+      return { state: cleanState };
   }
 
   // Can't revisit
@@ -247,7 +249,10 @@ export function handleDragStart(state: GameState, cell: Point): GameUpdate {
   }
 
   // Extend from end
-  if (path.length > 0 && isAdjacent(path[path.length - 1], cell)) {
+  if (
+    path.length > 0 &&
+    isAdjacentPassable(path[path.length - 1], cell, state.edgeWalls)
+  ) {
     return handleCellEnter(state, cell);
   }
 

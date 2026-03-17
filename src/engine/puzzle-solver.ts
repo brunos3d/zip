@@ -24,6 +24,7 @@ export function solve(
   grid: Cell[][],
   config: GridConfig,
   options: SolverOptions = {},
+  edgeWalls?: Set<string>,
 ): SolverResult {
   const { maxSolutions = 1, timeLimit = 5000 } = options;
   const startTime = Date.now();
@@ -62,7 +63,7 @@ export function solve(
     const reachable = new Set<string>();
     const queue: Point[] = [];
 
-    for (const n of getNeighbors(current, config, grid)) {
+    for (const n of getNeighbors(current, config, grid, edgeWalls)) {
       const k = pointKey(n);
       if (!visited.has(k)) {
         reachable.add(k);
@@ -72,7 +73,7 @@ export function solve(
 
     while (queue.length > 0) {
       const p = queue.shift()!;
-      for (const n of getNeighbors(p, config, grid)) {
+      for (const n of getNeighbors(p, config, grid, edgeWalls)) {
         const k = pointKey(n);
         if (!visited.has(k) && !reachable.has(k)) {
           reachable.add(k);
@@ -128,16 +129,16 @@ export function solve(
     }
 
     // Get unvisited non-wall neighbors
-    let neighbors = getNeighbors(current, config, grid).filter(
+    let neighbors = getNeighbors(current, config, grid, edgeWalls).filter(
       (n) => !visited.has(pointKey(n)),
     );
 
     // Warnsdorff ordering
     neighbors.sort((a, b) => {
-      const da = getNeighbors(a, config, grid).filter(
+      const da = getNeighbors(a, config, grid, edgeWalls).filter(
         (n) => !visited.has(pointKey(n)),
       ).length;
-      const db = getNeighbors(b, config, grid).filter(
+      const db = getNeighbors(b, config, grid, edgeWalls).filter(
         (n) => !visited.has(pointKey(n)),
       ).length;
       return da - db;

@@ -10,6 +10,7 @@ import {
   createEmptyGrid,
   getNeighbors,
   pointKey,
+  edgeWallKey,
   shuffleArray,
   createRng,
   seedToNumber,
@@ -184,6 +185,9 @@ export function generatePuzzle(
     grid[point.y][point.x].number = num;
   }
 
+  // Generate edge walls: collect path edges, then wall off some non-path edges
+  const edgeWalls = generateEdgeWalls(path, config, difficulty, rng);
+
   return {
     grid,
     checkpoints,
@@ -191,7 +195,57 @@ export function generatePuzzle(
     maxNumber: checkpoints.size,
     totalCells: totalTraversable,
     seed,
+    edgeWalls,
   };
+}
+
+/** Wall density per difficulty — fraction of non-path edges to wall off */
+const WALL_DENSITY: Record<Difficulty, number> = {
+  easy: 0.15,
+  medium: 0.2,
+  hard: 0.25,
+  expert: 0.3,
+};
+
+/**
+ * Generate edge walls between adjacent cells.
+ * Walls are placed on edges NOT used by the solution path.
+ * This constrains alternate routes and helps ensure a unique solution.
+ */
+function generateEdgeWalls(
+  path: Point[],
+  config: GridConfig,
+  difficulty: Difficulty,
+  rng: () => number,
+): Set<string> {
+  // Collect all edges used by the solution path
+  const pathEdges = new Set<string>();
+  for (let i = 1; i < path.length; i++) {
+    pathEdges.add(edgeWallKey(path[i - 1], path[i]));
+  }
+
+  // Collect all possible internal edges in the grid
+  const nonPathEdges: string[] = [];
+  for (let y = 0; y < config.rows; y++) {
+    for (let x = 0; x < config.cols; x++) {
+      const p: Point = { x, y };
+      // Right neighbor
+      if (x + 1 < config.cols) {
+        const key = edgeWallKey(p, { x: x + 1, y });
+        if (!pathEdges.has(key)) nonPathEdges.push(key);
+      }
+      // Down neighbor
+      if (y + 1 < config.rows) {
+        const key = edgeWallKey(p, { x, y: y + 1 });
+        if (!pathEdges.has(key)) nonPathEdges.push(key);
+      }
+    }
+  }
+
+  // Shuffle and pick a fraction based on difficulty
+  const shuffled = shuffleArray(nonPathEdges, rng);
+  const count = Math.floor(shuffled.length * WALL_DENSITY[difficulty]);
+  return new Set(shuffled.slice(0, count));
 }
 
 /**

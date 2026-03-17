@@ -186,6 +186,50 @@ function drawStaticGrid(
   ctx.stroke();
 }
 
+/** Draw edge walls as thick black lines between adjacent cells */
+function drawEdgeWalls(
+  ctx: CanvasRenderingContext2D,
+  edgeWalls: Set<string>,
+  rc: RenderConfig,
+): void {
+  const { cellSize, padding } = rc;
+  const wallThickness = Math.max(3, cellSize * 0.08);
+
+  ctx.save();
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = wallThickness;
+  ctx.lineCap = "round";
+
+  for (const key of edgeWalls) {
+    const [partA, partB] = key.split("|");
+    const [ax, ay] = partA.split(",").map(Number);
+    const [bx, by] = partB.split(",").map(Number);
+
+    // Determine which edge this wall is on
+    if (ax === bx) {
+      // Vertical neighbors — wall is a horizontal line between them
+      const topY = Math.max(ay, by);
+      const wx = padding + ax * cellSize;
+      const wy = padding + topY * cellSize;
+      ctx.beginPath();
+      ctx.moveTo(wx, wy);
+      ctx.lineTo(wx + cellSize, wy);
+      ctx.stroke();
+    } else {
+      // Horizontal neighbors — wall is a vertical line between them
+      const leftX = Math.max(ax, bx);
+      const wx = padding + leftX * cellSize;
+      const wy = padding + ay * cellSize;
+      ctx.beginPath();
+      ctx.moveTo(wx, wy);
+      ctx.lineTo(wx, wy + cellSize);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+}
+
 function drawNumbers(
   ctx: CanvasRenderingContext2D,
   grid: Cell[][],
@@ -193,7 +237,6 @@ function drawNumbers(
   theme: Theme,
   pathSet: Set<string>,
   animState: AnimationState,
-  lastCheckpointNumber: number,
 ): void {
   const { cellSize } = rc;
   const radius = cellSize * 0.35;
@@ -205,8 +248,6 @@ function drawNumbers(
 
       const { cx, cy } = getCellCenter(x, y, rc);
       const key = pointKey({ x, y });
-      const isOnPath = pathSet.has(key);
-      const isReached = isOnPath && cell.number <= lastCheckpointNumber;
       const isStartHighlight = cell.number === 1 && pathSet.size === 0;
 
       // Checkpoint pulse animation
@@ -513,6 +554,7 @@ export function render(
   tiltConfig?: TiltConfig | null,
   totalCells?: number,
   seed?: string,
+  edgeWalls?: Set<string>,
 ): void {
   const w = canvas.width / dpr;
   const h = canvas.height / dpr;
@@ -571,6 +613,11 @@ export function render(
   }
   ctx.drawImage(gridCache, 0, 0, w, h);
 
+  // Layer 1.5: Edge walls — thick black lines between cells
+  if (edgeWalls && edgeWalls.size > 0) {
+    drawEdgeWalls(ctx, edgeWalls, rc);
+  }
+
   // Layer 2: Hover preview
   drawHoverPreview(ctx, hoverCell, rc, theme, pathSet);
 
@@ -603,15 +650,7 @@ export function render(
   drawHintGlow(ctx, animState, rc, theme);
 
   // Layer 6: Numbers
-  drawNumbers(
-    ctx,
-    grid,
-    rc,
-    theme,
-    pathSet,
-    animState,
-    lastCheckpointNumber ?? 0,
-  );
+  drawNumbers(ctx, grid, rc, theme, pathSet, animState);
 
   // Layer 7: Completion effects (confetti should be in untransformed space)
   // Reset transform for confetti so particles aren't skewed

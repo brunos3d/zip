@@ -25,6 +25,24 @@ export function pointKey(p: Point): string {
   return `${p.x},${p.y}`;
 }
 
+/** Canonical key for an edge wall between two adjacent cells */
+export function edgeWallKey(a: Point, b: Point): string {
+  const ka = pointKey(a);
+  const kb = pointKey(b);
+  return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+}
+
+/** Check if two cells are adjacent AND not separated by an edge wall */
+export function isAdjacentPassable(
+  a: Point,
+  b: Point,
+  edgeWalls?: Set<string>,
+): boolean {
+  if (!isAdjacent(a, b)) return false;
+  if (edgeWalls && edgeWalls.has(edgeWallKey(a, b))) return false;
+  return true;
+}
+
 export function isInBounds(p: Point, config: GridConfig): boolean {
   return p.x >= 0 && p.x < config.cols && p.y >= 0 && p.y < config.rows;
 }
@@ -36,6 +54,7 @@ export function getNeighbors(
   p: Point,
   config: GridConfig,
   grid?: Cell[][],
+  edgeWalls?: Set<string>,
 ): Point[] {
   const dirs: Point[] = [
     { x: 0, y: -1 },
@@ -48,6 +67,7 @@ export function getNeighbors(
     .filter((n) => {
       if (!isInBounds(n, config)) return false;
       if (grid && grid[n.y][n.x].wall) return false;
+      if (edgeWalls && edgeWalls.has(edgeWallKey(p, n))) return false;
       return true;
     });
 }
