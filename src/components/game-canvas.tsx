@@ -61,6 +61,7 @@ export default function GameCanvas({
   const rcRef = useRef<RenderConfig | null>(null);
   const lastTimeRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const gameStateRef = useRef(gameState);
 
   // Tilt / parallax refs
   const isMobile =
@@ -213,11 +214,22 @@ export default function GameCanvas({
     }
   }, [gameState.path.length, gameState.moves]);
 
-  // Render loop
+  // Sync game state ref and mark canvas dirty whenever game state changes.
+  // The ref is used by the rAF loop so it can read the latest state without
+  // being listed as a dependency (which would tear down & recreate the loop).
+  useEffect(() => {
+    gameStateRef.current = gameState;
+    needsDrawRef.current = true;
+  }, [gameState]);
+
+  // Render loop — uses gameStateRef to avoid tearing down the rAF loop on
+  // every state change (which would re-run setupCanvas, clear the canvas,
+  // invalidate the grid cache, and restart the loop on every drag step).
   useEffect(() => {
     setupCanvas();
 
     const loop = (time: number) => {
+      const gs = gameStateRef.current;
       const dt = lastTimeRef.current
         ? (time - lastTimeRef.current) / 1000
         : 1 / 60;
@@ -227,7 +239,7 @@ export default function GameCanvas({
       if (animNeedsRedraw) needsDrawRef.current = true;
 
       // Advance skew bounce animation
-      if (gameState.solved) {
+      if (gs.solved) {
         const tiltNeedsRedraw = updateTilt(
           tiltStateRef.current,
           tiltConfigRef.current,
@@ -237,7 +249,7 @@ export default function GameCanvas({
       }
 
       // Sync tilt state to pointer controller based on game state
-      const skewActive = gameState.solved;
+      const skewActive = gs.solved;
       if (controllerRef.current) {
         controllerRef.current.updateConfig(
           rcRef.current!,
@@ -256,20 +268,20 @@ export default function GameCanvas({
             render(
               ctx,
               canvas,
-              gameState.grid,
-              gameState.path,
+              gs.grid,
+              gs.path,
               hoverRef.current,
               rc,
               LIGHT_THEME,
               animRef.current,
               dpr,
-              gameState.invalidFeedback,
-              gameState.lastCheckpointNumber,
-              gameState.solved ? tiltStateRef.current : null,
-              gameState.solved ? tiltConfigRef.current : null,
-              gameState.totalCells,
-              gameState.seed,
-              gameState.edgeWalls,
+              gs.invalidFeedback,
+              gs.lastCheckpointNumber,
+              gs.solved ? tiltStateRef.current : null,
+              gs.solved ? tiltConfigRef.current : null,
+              gs.totalCells,
+              gs.seed,
+              gs.edgeWalls,
             );
           }
         }
@@ -284,7 +296,7 @@ export default function GameCanvas({
     return () => {
       cancelAnimationFrame(rafRef.current);
     };
-  }, [gameState, setupCanvas]);
+  }, [setupCanvas]);
 
   // Resize handler
   useEffect(() => {

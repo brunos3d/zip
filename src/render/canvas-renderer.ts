@@ -37,18 +37,6 @@ function lerpHsl(a: string, b: string, t: number): string {
   return `hsl(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%)`;
 }
 
-function lerpHslAlpha(a: string, b: string, t: number, alpha: number): string {
-  const [h1, s1, l1] = parseHsl(a);
-  const [h2, s2, l2] = parseHsl(b);
-  let dh = h2 - h1;
-  if (dh > 180) dh -= 360;
-  if (dh < -180) dh += 360;
-  const h = (((h1 + dh * t) % 360) + 360) % 360;
-  const s = s1 + (s2 - s1) * t;
-  const l = l1 + (l2 - l1) * t;
-  return `hsla(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%, ${alpha})`;
-}
-
 /** Cache: avoid recomputing colors every frame */
 let gradientCacheSeed = "";
 let gradientCacheColors: [string, string, string] = ["", "", ""];
@@ -337,61 +325,60 @@ function drawPath(
   const totalSegments = path.length - 1;
   const drawSegments = Math.ceil(totalSegments * animState.pathExtendProgress);
 
-  // Draw each segment with its own gradient color
+  // Pre-compute segment endpoints for both glow and color passes
+  const points: { px: number; py: number }[] = [];
+  for (let i = 0; i <= drawSegments; i++) {
+    const { cx, cy } = getCellCenter(path[i].x, path[i].y, rc);
+    points.push({ px: cx, py: cy });
+  }
+  // Adjust last point for animation interpolation
+  if (
+    drawSegments > 0 &&
+    drawSegments <= totalSegments &&
+    animState.pathExtendProgress < 1
+  ) {
+    const prev = points[drawSegments - 1];
+    const cur = points[drawSegments];
+    const frac =
+      animState.pathExtendProgress * totalSegments - (drawSegments - 1);
+    points[drawSegments] = {
+      px: prev.px + (cur.px - prev.px) * frac,
+      py: prev.py + (cur.py - prev.py) * frac,
+    };
+  }
+
   ctx.save();
-  ctx.lineWidth = lineWidth;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
+  // Draw colored segments (no shadowBlur — the original per-segment shadow was
+  // extremely costly on mobile GPUs so we omit the glow entirely)
+  ctx.lineWidth = lineWidth;
   for (let i = 1; i <= drawSegments; i++) {
-    const prev = getCellCenter(path[i - 1].x, path[i - 1].y, rc);
-    const cur = getCellCenter(path[i].x, path[i].y, rc);
-
+    const prev = points[i - 1];
+    const cur = points[i];
     const tPrev = (i - 1) / totalCells;
     const tCur = i / totalCells;
 
-    let ex = cur.cx;
-    let ey = cur.cy;
-
-    // For the last segment during animation, interpolate position
-    if (i === drawSegments && animState.pathExtendProgress < 1) {
-      const frac =
-        animState.pathExtendProgress * totalSegments - (drawSegments - 1);
-      ex = prev.cx + (cur.cx - prev.cx) * frac;
-      ey = prev.cy + (cur.cy - prev.cy) * frac;
-    }
-
     // Per-segment linear gradient for seamless color transition
-    const grad = ctx.createLinearGradient(prev.cx, prev.cy, ex, ey);
+    const grad = ctx.createLinearGradient(prev.px, prev.py, cur.px, cur.py);
     grad.addColorStop(0, lerpHsl(colorA, colorB, tPrev));
     grad.addColorStop(1, lerpHsl(colorA, colorB, tCur));
 
-    const glowColor = lerpHslAlpha(colorA, colorB, (tPrev + tCur) / 2, 0.3);
-
     ctx.beginPath();
-    ctx.moveTo(prev.cx, prev.cy);
-    ctx.lineTo(ex, ey);
+    ctx.moveTo(prev.px, prev.py);
+    ctx.lineTo(cur.px, cur.py);
     ctx.strokeStyle = grad;
-    // Skip shadow on the last segment during animation to prevent tip flicker
-    if (i === drawSegments && animState.pathExtendProgress < 1) {
-      ctx.shadowColor = "transparent";
-      ctx.shadowBlur = 0;
-    } else {
-      ctx.shadowColor = glowColor;
-      ctx.shadowBlur = lineWidth * 0.8;
-    }
     ctx.stroke();
   }
 
-  ctx.shadowBlur = 0;
-
   // Draw dots at each cell on path with matching gradient color
   for (let i = 0; i <= Math.min(drawSegments, path.length - 1); i++) {
-    const { cx, cy } = getCellCenter(path[i].x, path[i].y, rc);
+    const { px, py } = points[i];
     const t = i / totalCells;
     ctx.fillStyle = lerpHsl(colorA, colorB, t);
     ctx.beginPath();
-    ctx.arc(cx, cy, lineWidth * 0.35, 0, Math.PI * 2);
+    ctx.arc(px, py, lineWidth * 0.35, 0, Math.PI * 2);
     ctx.fill();
   }
 
