@@ -26,6 +26,8 @@ export class PointerController {
   private longPressTriggered = false;
   private dpr: number;
   private tiltState: TiltState | null = null;
+  /** Cached bounding rect — set on pointer-start, cleared on pointer-end. */
+  private cachedRect: DOMRect | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -53,7 +55,7 @@ export class PointerController {
   }
 
   private getCanvasCoords(e: MouseEvent | Touch): { x: number; y: number } {
-    const rect = this.canvas.getBoundingClientRect();
+    const rect = this.cachedRect ?? this.canvas.getBoundingClientRect();
     return {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
@@ -78,6 +80,8 @@ export class PointerController {
     this.isDragging = true;
     this.lastCell = cell;
     this.longPressTriggered = false;
+    // Cache rect to avoid layout reflow on every touchmove/mousemove
+    this.cachedRect = this.canvas.getBoundingClientRect();
     this.callbacks.onDragStart(cell);
 
     // Start long press timer
@@ -116,6 +120,7 @@ export class PointerController {
   private handlePointerEnd = (): void => {
     this.isDragging = false;
     this.lastCell = null;
+    this.cachedRect = null;
     if (this.longPressTimer) {
       clearTimeout(this.longPressTimer);
       this.longPressTimer = null;

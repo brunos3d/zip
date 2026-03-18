@@ -337,61 +337,72 @@ function drawPath(
   const totalSegments = path.length - 1;
   const drawSegments = Math.ceil(totalSegments * animState.pathExtendProgress);
 
-  // Draw each segment with its own gradient color
+  // Pre-compute segment endpoints for both glow and color passes
+  const points: { px: number; py: number }[] = [];
+  for (let i = 0; i <= drawSegments; i++) {
+    const { cx, cy } = getCellCenter(path[i].x, path[i].y, rc);
+    points.push({ px: cx, py: cy });
+  }
+  // Adjust last point for animation interpolation
+  if (
+    drawSegments > 0 &&
+    drawSegments <= totalSegments &&
+    animState.pathExtendProgress < 1
+  ) {
+    const prev = points[drawSegments - 1];
+    const cur = points[drawSegments];
+    const frac =
+      animState.pathExtendProgress * totalSegments - (drawSegments - 1);
+    points[drawSegments] = {
+      px: prev.px + (cur.px - prev.px) * frac,
+      py: prev.py + (cur.py - prev.py) * frac,
+    };
+  }
+
   ctx.save();
-  ctx.lineWidth = lineWidth;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
+  // Pass 1: Single wide semi-transparent stroke for glow (replaces expensive
+  // per-segment shadowBlur which is very costly on mobile GPUs)
+  const midT = drawSegments / 2 / totalCells;
+  const glowColor = lerpHslAlpha(colorA, colorB, midT, 0.25);
+  ctx.lineWidth = lineWidth * 1.6;
+  ctx.strokeStyle = glowColor;
+  ctx.beginPath();
+  ctx.moveTo(points[0].px, points[0].py);
   for (let i = 1; i <= drawSegments; i++) {
-    const prev = getCellCenter(path[i - 1].x, path[i - 1].y, rc);
-    const cur = getCellCenter(path[i].x, path[i].y, rc);
+    ctx.lineTo(points[i].px, points[i].py);
+  }
+  ctx.stroke();
 
+  // Pass 2: Draw colored segments (no shadow blur)
+  ctx.lineWidth = lineWidth;
+  for (let i = 1; i <= drawSegments; i++) {
+    const prev = points[i - 1];
+    const cur = points[i];
     const tPrev = (i - 1) / totalCells;
     const tCur = i / totalCells;
 
-    let ex = cur.cx;
-    let ey = cur.cy;
-
-    // For the last segment during animation, interpolate position
-    if (i === drawSegments && animState.pathExtendProgress < 1) {
-      const frac =
-        animState.pathExtendProgress * totalSegments - (drawSegments - 1);
-      ex = prev.cx + (cur.cx - prev.cx) * frac;
-      ey = prev.cy + (cur.cy - prev.cy) * frac;
-    }
-
     // Per-segment linear gradient for seamless color transition
-    const grad = ctx.createLinearGradient(prev.cx, prev.cy, ex, ey);
+    const grad = ctx.createLinearGradient(prev.px, prev.py, cur.px, cur.py);
     grad.addColorStop(0, lerpHsl(colorA, colorB, tPrev));
     grad.addColorStop(1, lerpHsl(colorA, colorB, tCur));
 
-    const glowColor = lerpHslAlpha(colorA, colorB, (tPrev + tCur) / 2, 0.3);
-
     ctx.beginPath();
-    ctx.moveTo(prev.cx, prev.cy);
-    ctx.lineTo(ex, ey);
+    ctx.moveTo(prev.px, prev.py);
+    ctx.lineTo(cur.px, cur.py);
     ctx.strokeStyle = grad;
-    // Skip shadow on the last segment during animation to prevent tip flicker
-    if (i === drawSegments && animState.pathExtendProgress < 1) {
-      ctx.shadowColor = "transparent";
-      ctx.shadowBlur = 0;
-    } else {
-      ctx.shadowColor = glowColor;
-      ctx.shadowBlur = lineWidth * 0.8;
-    }
     ctx.stroke();
   }
 
-  ctx.shadowBlur = 0;
-
   // Draw dots at each cell on path with matching gradient color
   for (let i = 0; i <= Math.min(drawSegments, path.length - 1); i++) {
-    const { cx, cy } = getCellCenter(path[i].x, path[i].y, rc);
+    const { px, py } = points[i];
     const t = i / totalCells;
     ctx.fillStyle = lerpHsl(colorA, colorB, t);
     ctx.beginPath();
-    ctx.arc(cx, cy, lineWidth * 0.35, 0, Math.PI * 2);
+    ctx.arc(px, py, lineWidth * 0.35, 0, Math.PI * 2);
     ctx.fill();
   }
 
