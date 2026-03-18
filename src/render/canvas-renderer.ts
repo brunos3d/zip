@@ -37,18 +37,6 @@ function lerpHsl(a: string, b: string, t: number): string {
   return `hsl(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%)`;
 }
 
-function lerpHslAlpha(a: string, b: string, t: number, alpha: number): string {
-  const [h1, s1, l1] = parseHsl(a);
-  const [h2, s2, l2] = parseHsl(b);
-  let dh = h2 - h1;
-  if (dh > 180) dh -= 360;
-  if (dh < -180) dh += 360;
-  const h = (((h1 + dh * t) % 360) + 360) % 360;
-  const s = s1 + (s2 - s1) * t;
-  const l = l1 + (l2 - l1) * t;
-  return `hsla(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%, ${alpha})`;
-}
-
 /** Cache: avoid recomputing colors every frame */
 let gradientCacheSeed = "";
 let gradientCacheColors: [string, string, string] = ["", "", ""];
@@ -363,20 +351,8 @@ function drawPath(
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  // Pass 1: Single wide semi-transparent stroke for glow (replaces expensive
-  // per-segment shadowBlur which is very costly on mobile GPUs)
-  const midT = drawSegments / 2 / totalCells;
-  const glowColor = lerpHslAlpha(colorA, colorB, midT, 0.25);
-  ctx.lineWidth = lineWidth * 1.6;
-  ctx.strokeStyle = glowColor;
-  ctx.beginPath();
-  ctx.moveTo(points[0].px, points[0].py);
-  for (let i = 1; i <= drawSegments; i++) {
-    ctx.lineTo(points[i].px, points[i].py);
-  }
-  ctx.stroke();
-
-  // Pass 2: Draw colored segments (no shadow blur)
+  // Draw colored segments (no shadowBlur — the original per-segment shadow was
+  // extremely costly on mobile GPUs so we omit the glow entirely)
   ctx.lineWidth = lineWidth;
   for (let i = 1; i <= drawSegments; i++) {
     const prev = points[i - 1];
